@@ -1,75 +1,108 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { useSupportChat } from "../context/SupportChatContext";
+import axios from "axios";
 
-interface Agent {
+const API_URL = "http://localhost:3000/api";
+
+export interface Agent {
   id: number;
   name: string;
-  type: 'general' | 'training' | 'exam';
-  status: 'online' | 'offline';
+  status: "online" | "offline";
 }
 
-interface Message {
+export interface Message {
   id: number;
-  sender: 'user' | 'agent';
-  content: string;
-  timestamp: string;
+  sender_id: number;
+  message: string;
+  sent_at: string;
+}
+
+export interface User {
+  id: number;
+  name: string;
+  role: string;
 }
 
 const CustomerDashboard: React.FC = () => {
   const { user, logout } = useAuth();
+  const {
+    messages,
+    setChatSessionId,
+    isTyping,
+    inputMessage,
+    socket,
+    handleSendMessage,
+    handleInputChange,
+    fetchMessages,
+  } = useSupportChat();
   const navigate = useNavigate();
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputMessage, setInputMessage] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+ 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on("agent_status_change", handleAgentStatusChange);
+
+      return () => {
+        socket.off("agent_status_change");
+      };
+    }
+  }, [socket]);
+
+  const fetchAgents = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/agents`, { withCredentials: true });
+      setAgents(response.data.agents);
+    } catch (error) {
+      console.error("Failed to fetch agents:", error);
+    }
+  };
+
+  const handleAgentStatusChange = (data: { agentId: number; status: "online" | "offline" }) => {
+    setAgents((prev) =>
+      prev.map((agent) => (agent.id === data.agentId ? { ...agent, status: data.status } : agent))
+    );
+  };
+
+  const handleAgentSelect = async (agent: Agent) => {
+    setSelectedAgent(agent);
+    try {
+      const response = await axios.post(
+        `${API_URL}/chat/initiate`,
+        { agentId: agent.id },
+        { withCredentials: true }
+      );
+      const newChatSessionId = response.data.chatSessionId;
+      setChatSessionId(newChatSessionId);
+      await fetchMessages(newChatSessionId);
+    } catch (error) {
+      console.error("Failed to initiate chat session:", error);
+    }
+  };
 
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/');
+      navigate("/");
     } catch (error) {
-      console.error('Failed to logout', error);
+      console.error("Failed to logout", error);
     }
-  };
-
-  const agents: Agent[] = [
-    { id: 1, name: 'Arjun Patil', type: 'general', status: 'online' },
-    { id: 2, name: 'Priya Bichave', type: 'general', status: 'online' },
-    { id: 3, name: 'Ravi Patil', type: 'training', status: 'online' },
-    { id: 4, name: 'Neha Chaudhari', type: 'training', status: 'offline' },
-    { id: 5, name: 'Karan Patil', type: 'exam', status: 'online' },
-    { id: 6, name: 'Pooja Bhamare', type: 'exam', status: 'online' },
-    { id: 7, name: 'Prajakta Patil', type: 'exam', status: 'offline' },
-  ];
-  
-
-  const handleAgentSelect = (agent: Agent) => {
-    setSelectedAgent(agent);
-    setMessages([]);
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim()) return;
-
-    const newMessage: Message = {
-      id: messages.length + 1,
-      sender: 'user',
-      content: inputMessage,
-      timestamp: new Date().toLocaleTimeString(),
-    };
-    setMessages([...messages, newMessage]);
-    setInputMessage('');
-
-    setTimeout(() => {
-      const agentResponse: Message = {
-        id: messages.length + 2,
-        sender: 'agent',
-        content: `This is a simulated response from ${selectedAgent?.name}.`,
-        timestamp: new Date().toLocaleTimeString(),
-      };
-      setMessages((prevMessages) => [...prevMessages, agentResponse]);
-    }, 1000);
   };
 
   return (
@@ -78,7 +111,9 @@ const CustomerDashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
           <h1 className="text-3xl font-bold text-gray-900">Customer Support Chat</h1>
           <div className="flex items-center">
-            <span className="mr-4 text-gray-700">{user?.name} ({user?.role})</span>
+            <span className="mr-4 text-gray-700">
+              {user?.name} ({user?.role})
+            </span>
             <button
               onClick={handleLogout}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
@@ -98,59 +133,68 @@ const CustomerDashboard: React.FC = () => {
                 key={agent.id}
                 onClick={() => handleAgentSelect(agent)}
                 className={`w-full flex items-center justify-between p-2 mb-2 rounded ${
-                  agent.status === 'offline' ? 'opacity-50 cursor-not-allowed' : ''
-                } ${selectedAgent?.id === agent.id ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
-                disabled={agent.status === 'offline'}
+                  agent.status === "offline" ? "opacity-50 cursor-not-allowed" : " "
+                } ${selectedAgent?.id === agent.id ? "bg-gray-200" : "hover:bg-gray-100"}`}
+                disabled={agent.status === "offline"}
               >
                 <div className="flex items-center">
-                  <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-2">
-                    {agent.name.split(' ').map(n => n[0]).join('')}
+                  <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-2 overflow-hidden">
+                    <img
+                      src={`https://avatar.iran.liara.run/public/boy?username=${agent.name}`}
+                      alt="Avatar"
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <div className="text-left">
                     <div>{agent.name}</div>
-                    <div className="text-xs text-gray-600">
-                      {agent.type} • {agent.status}
-                    </div>
+                    <div className="text-xs text-gray-600">{agent.status}</div>
                   </div>
                 </div>
-                <div className={`w-2 h-2 rounded-full ${
-                  agent.status === 'online' ? 'bg-green-500' : 'bg-gray-500'
-                }`} />
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    agent.status === "online" ? "bg-green-500" : "bg-gray-500"
+                  }`}
+                />
               </button>
             ))}
           </div>
         </div>
         <div className="bg-white rounded-lg shadow p-4 md:col-span-2">
           <h2 className="text-xl font-semibold mb-4">
-            {selectedAgent ? `Chat with ${selectedAgent.name}` : 'Select an agent'}
+            {selectedAgent ? `Chat with ${selectedAgent.name}` : "Select an agent"}
           </h2>
           <div className="h-[400px] mb-4 overflow-y-auto">
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={`mb-2 ${
-                  message.sender === 'user' ? 'text-right' : 'text-left'
-                }`}
+                className={`mb-2 ${message.sender_id === (user as User).id ? "text-right" : "text-left"}`}
               >
                 <div
                   className={`inline-block p-2 rounded-lg ${
-                    message.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200'
+                    message.sender_id === (user as User).id
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-200"
                   }`}
                 >
-                  {message.content}
+                  {message.message}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  {message.timestamp}
+                  {new Date(message.sent_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </div>
               </div>
             ))}
+            {isTyping && <div className="text-sm text-gray-500 italic">{selectedAgent?.name} is typing...</div>}
+            <div ref={messagesEndRef} />
           </div>
           <form onSubmit={handleSendMessage} className="flex gap-2">
             <input
               type="text"
               placeholder="Type your message..."
               value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
+              onChange={handleInputChange}
               disabled={!selectedAgent}
               className="flex-grow p-2 border rounded"
             />

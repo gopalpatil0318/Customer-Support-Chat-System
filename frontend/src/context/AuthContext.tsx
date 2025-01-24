@@ -12,6 +12,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
+  token: string | null;
   login: (email: string, password: string, role: string) => Promise<void>;
   signup: (name: string, email: string, password: string, role: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -23,6 +24,7 @@ const API_URL = 'http://localhost:3000/api';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [token,setToekn ] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +34,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const response = await axios.get(`${API_URL}/user`, { withCredentials: true });
         console.log(response.data.user)
         setUser(response.data.user);
+        setToekn(response.data.token);
+        
       } catch (err) {
         setError('Failed to fetch user data');
       } finally {
@@ -46,6 +50,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await axios.post(`${API_URL}/signin`, { email, password, role }, { withCredentials: true });
       setUser(response.data.user);
+      setToekn(response.data.token);
+      
     } catch (err) {
       setError('Failed to login');
       throw err;
@@ -56,6 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const response = await axios.post(`${API_URL}/signup`, { name, email, password, role }, { withCredentials: true });
       setUser(response.data.user);
+      setToekn(response.data.token);
     } catch (err) {
       setError('Failed to sign up');
       throw err;
@@ -73,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, error, login, signup, logout,token }}>
       {children}
     </AuthContext.Provider>
   );

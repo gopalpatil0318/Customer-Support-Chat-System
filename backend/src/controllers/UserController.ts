@@ -83,7 +83,8 @@ export const signIn = async (req: any, res: any) => {
       
           res.status(200).json({
             message: 'User signed in successfully',
-            user: { id: user.id, name: user.name, email: user.email, role: user.role }
+            user: { id: user.id, name: user.name, email: user.email, role: user.role },
+            token,
           });
         } catch (error) {
           console.error('Error signing in user:', error);
@@ -105,7 +106,10 @@ export const logout = (req: Request, res: Response) => {
 export const getUserData = async (req: Request, res: any) => {
     try {
       const userId = req.user?.id;
-  
+      const token = req.cookies.jwt;
+
+      
+    
       if (!userId) {
         return res.status(401).json({ error: 'User not authenticated' });
       }
@@ -117,7 +121,8 @@ export const getUserData = async (req: Request, res: any) => {
       }
   
       res.status(200).json({
-        user: result.rows[0]
+        user: result.rows[0],
+        token
       });
     } catch (error) {
       console.error('Error fetching user data:', error);

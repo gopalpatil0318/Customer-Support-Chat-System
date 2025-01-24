@@ -27,7 +27,7 @@ export const authenticateToken = (req: any, res: any, next: NextFunction) => {
 };
 
 export const authorizeRole = (roles: string[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: any, next: NextFunction) => {
     if (!req.user) return res.sendStatus(401);
     if (!roles.includes(req.user.role)) return res.sendStatus(403);
     next();

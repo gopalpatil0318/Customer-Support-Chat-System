@@ -2,11 +2,11 @@ import { Router } from 'express';
 import { signUp, signIn, logout, getUserData } from '../controllers/UserController';
 import { authenticateToken } from '../middleware/auth';
 
-const router = Router();
+const userRouter = Router();
 
-router.post('/signup', signUp);
-router.post('/signin', signIn);
-router.post('/logout', logout);
-router.get('/user', authenticateToken, getUserData);
+userRouter.post('/signup', signUp);
+userRouter.post('/signin', signIn);
+userRouter.post('/logout', logout);
+userRouter.get('/user', authenticateToken, getUserData);
 
-export default router;
+export default userRouter;

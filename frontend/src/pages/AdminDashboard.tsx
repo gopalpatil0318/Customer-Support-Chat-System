@@ -1,13 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
+import io from 'socket.io-client';
+
+const API_URL = 'http://localhost:3000/api';
+const SOCKET_URL = 'http://localhost:3000';
 
 interface ChatSession {
   id: number;
   agent: string;
   customer: string;
   startTime: string;
-  status: 'active' | 'completed';
+  status: 'active' | 'resolved';
   product: string;
   messages: { sender: 'admin' | 'agent' | 'customer'; content: string; timestamp: string }[];
 }
@@ -15,76 +20,52 @@ interface ChatSession {
 const AdminDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [chatSessions] = useState<ChatSession[]>([
-    { 
-      id: 1, 
-      agent: 'Rahul Sharma', 
-      customer: 'Gopal Patil', 
-      startTime: '10:00 AM', 
-      status: 'active',
-
-      product: 'Traning and Placement',
-      messages: [
-        { sender: 'customer', content: 'Hello, I need help with my account.', timestamp: '10:01 AM' },
-        { sender: 'agent', content: 'Hi Gopal, I\'d be happy to help. What seems to be the issue?', timestamp: '10:02 AM' },
-        { sender: 'customer', content: 'I can\'t log in to my account.', timestamp: '10:03 AM' },
-        { sender: 'agent', content: 'I see. Let\'s try resetting your password. I\'ll guide you through the process.', timestamp: '10:04 AM' },
-      ]
-    },
-    { 
-      id: 2, 
-      agent: 'Priya Desai', 
-      customer: 'Amit Kumar', 
-      startTime: '10:15 AM', 
-      status: 'active',
-   
-      product: 'Genral',
-      messages: [
-        { sender: 'customer', content: 'Hi, I\'m having trouble with the new software update.', timestamp: '10:16 AM' },
-        { sender: 'agent', content: 'Hello Amit, I\'m here to assist you. Can you describe the issue you\'re facing?', timestamp: '10:17 AM' },
-        { sender: 'customer', content: 'The application keeps crashing after the update.', timestamp: '10:18 AM' },
-        { sender: 'agent', content: 'I understand. Let\'s start by checking your system specifications and then we\'ll troubleshoot step by step.', timestamp: '10:19 AM' },
-      ]
-    },
-    { 
-      id: 3, 
-      agent: 'Vikram Patel', 
-      customer: 'Neha Gupta', 
-      startTime: '09:45 AM', 
-      status: 'completed',
-      product: 'Traning and Placement',
-      messages: [
-        { sender: 'customer', content: 'Good morning, I\'d like to know about your latest offers.', timestamp: '09:46 AM' },
-        { sender: 'agent', content: 'Good morning Neha! I\'d be delighted to inform you about our current promotions.', timestamp: '09:47 AM' },
-        { sender: 'customer', content: 'Great, I\'m particularly interested in your premium services.', timestamp: '09:48 AM' },
-        { sender: 'agent', content: 'Excellent choice! Let me walk you through our premium service packages and their benefits.', timestamp: '09:49 AM' },
-      ]
-    },
-    { 
-      id: 4, 
-      agent: 'Ananya Singh', 
-      customer: 'Rajesh Khanna', 
-      startTime: '10:30 AM', 
-      status: 'active',
-      product: 'Quize App',
-      messages: [
-        { sender: 'customer', content: 'Hello, I\'m considering upgrading my current plan.', timestamp: '10:31 AM' },
-        { sender: 'agent', content: 'Hello Rajesh, that\'s great to hear! I\'d be happy to discuss our upgrade options with you.', timestamp: '10:32 AM' },
-        { sender: 'customer', content: 'What additional features would I get with the next tier?', timestamp: '10:33 AM' },
-        { sender: 'agent', content: 'Great question! Let me outline the key benefits and features of our higher-tier plans for you.', timestamp: '10:34 AM' },
-      ]
-    },
-  ]);
-
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<ChatSession | null>(null);
+  const [socket, setSocket] = useState<any>(null);
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      navigate('/');
-    } catch (error) {
-      console.error('Failed to logout', error);
+  useEffect(() => {
+    const newSocket = io(SOCKET_URL, { withCredentials: true });
+    setSocket(newSocket);
+
+    fetchAllChats();
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on('new_chat_session', handleNewChatSession);
+      socket.on('query_resolved', handleQueryResolved);
+
+      return () => {
+        socket.off('new_chat_session');
+        socket.off('query_resolved');
+      };
     }
+  }, [socket]);
+
+  const fetchAllChats = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/chats`, { withCredentials: true });
+      setChatSessions(response.data.chats);
+    } catch (error) {
+      console.error('Failed to fetch all chats:', error);
+    }
+  };
+
+  const handleNewChatSession = () => {
+    fetchAllChats();
+  };
+
+  const handleQueryResolved = (data: { chatSessionId: number }) => {
+    setChatSessions((prevSessions) =>
+      prevSessions.map((session) =>
+        session.id === data.chatSessionId ? { ...session, status: 'resolved' } : session
+      )
+    );
   };
 
   const openChatView = (session: ChatSession) => {
@@ -93,6 +74,15 @@ const AdminDashboard: React.FC = () => {
 
   const closeChatView = () => {
     setSelectedSession(null);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to logout', error);
+    }
   };
 
   return (
@@ -122,7 +112,6 @@ const AdminDashboard: React.FC = () => {
                 <th className="p-2 text-left">Customer</th>
                 <th className="p-2 text-left">Start Time</th>
                 <th className="p-2 text-left">Status</th>
-                
                 <th className="p-2 text-left">Product</th>
                 <th className="p-2 text-left">Actions</th>
               </tr>
@@ -154,7 +143,6 @@ const AdminDashboard: React.FC = () => {
                       {session.status}
                     </span>
                   </td>
-                 
                   <td className="p-2">{session.product}</td>
                   <td className="p-2">
                     <button 
